@@ -1,0 +1,689 @@
+(* hamiltonian *)
+
+Clear[p1, q1, p2, q2, p10, p20, q10, q20, H]
+finaltime = 50000;
+energyofh = 1/12.;
+
+SetDirectory[$UserDocumentsDirectory]
+
+
+H = 1/2 (p10^2 + p20^2) +
+    1/24 (Exp[2 q20 + 2 Sqrt[3] q10] + Exp[2 q20 - 2 (Sqrt[3]) q10] +
+       Exp[-4 q20]) - 1/8 /. {q10 -> q10[t], q20 -> q20[t],
+    p10 -> p10[t], p20 -> p20[t]};
+
+(* equations of motion *)
+
+
+Print["Section 1.  Start time is:", DateList[]]
+t0 = AbsoluteTime[];
+
+
+Clear[p10]
+
+p1dot = p10'[t] == -D[H, q10[t]];
+p2dot = p20'[t] == -D[H, q20[t]] ;
+q1dot = q10'[t] == D[H, p10[t]] ;
+q2dot = q20'[t] == D[H, p20[t]] ;
+
+(* initial conditions *)
+
+initialconditionequation =
+  1/2 (p1^2 + p2^2) + (1/24) (E^(2 q2 + 2 (3^(1/2) q1)) +
+       E^(2 q2 - 2 (3)^(1/2) q1) + E^(-4 q2)) - (1/8) -
+    energyofh /. {q1 -> 0, p2 -> 0};
+possiblep1 = Solve[initialconditionequation == 0, p1];
+possiblep1[[2, 1, 2]];
+tableofinitialconditions =
+  Table[{possiblep1[[2, 1, 2]], 0, 0, q2}, {q2, 0, 0.42, 0.014}];
+(* Manually enter initial conditions {a,b,c,d}
+AppendTo[tableofinitialconditions,{a1,b1,c1,d1}]
+AppendTo[tableofinitialconditions,{a2,b2,c2,d2}]
+tableofinitialconditions[{a1,b1,c1,d1},{a2,b2,c2,d2}]
+*)
+tableofinitialconditions // MatrixForm;
+Length[tableofinitialconditions];
+
+(* initial conditions in equations of motion *)
+
+listoftableofICS =
+  Table[{p1dot, p2dot, q1dot, q2dot,
+    p10[0] == tableofinitialconditions[[k, 1]],
+    p20[0] == tableofinitialconditions[[k, 2]],
+    q10[0] == tableofinitialconditions[[k, 3]],
+    q20[0] == tableofinitialconditions[[k, 4]]}, {k, 1,
+    Length[tableofinitialconditions]}];
+listoftableofICS // MatrixForm;
+Length[listoftableofICS];
+
+(* solving differential equation for solutions to hamiltonian with \
+initial conditions *)
+
+
+
+s = Table[
+   NDSolve[listoftableofICS[[kk]], {p10, p20, q10, q20}, {t, 0,
+     finaltime},
+    Method -> {"SymplecticPartitionedRungeKutta",
+      DifferenceOrder -> 6, "PositionVariables" -> {q10[t], q20[t]}},
+    StartingStepSize -> 1/10], {kk, 1,
+    Length[tableofinitialconditions]}];
+
+(* calculating solutions of the differential equations with respect \
+to initial conditions *)
+
+
+Do[
+ tableofq1s[kk] =
+  ParallelTable[{t, First[q10[t] /. s[[kk]]]}, {t, 0, finaltime,
+    0.05}], {kk, 1, Length[tableofinitialconditions]}]
+
+(* table with q1 and q1*q1 *)
+
+
+Do[
+ tableofproductsofq1s[kk] =
+  ParallelTable[{tableofq1s[kk][[pp, 1]],
+    tableofq1s[kk][[pp, 2]] tableofq1s[kk][[pp + 1, 2]]}, {pp, 1,
+    Length[tableofq1s[kk]] - 1}], {kk, 1,
+  Length[tableofinitialconditions]}]
+
+(* sorting table with q1 and q1*q1 for values less than zero *)
+
+Do[tableofinitialtimes[kk] = {}, {kk, 1,
+  Length[tableofinitialconditions]}]
+Do[Do[If[tableofproductsofq1s[kk][[pp, 2]] < 0.,
+   AppendTo[tableofinitialtimes[kk],
+    tableofproductsofq1s[kk][[pp, 1]]]], {pp, 1,
+   Length[tableofproductsofq1s[kk]]}], {kk, 1,
+  Length[tableofinitialconditions]}]
+Length[tableofinitialtimes[k]];
+
+(* sorting for positive values from previous table, and sorting for \
+appropriate times *)
+
+Do[
+  Do[
+   tablek =
+    Table[{Abs[First[q10[tt] /. s[[k]]]], tt}, {tt,
+      tableofinitialtimes[k][[pp]],
+      tableofinitialtimes[k][[pp]] + 0.1, 0.005}];
+   time[k, pp] = Sort[tablek][[1, 2]], {pp, 1,
+    Length[tableofinitialtimes[k]]}], {k, 1,
+   Length[tableofinitialconditions]}];
+
+(* using appropriate times and initial conditions with solutions of \
+differential equations *)
+
+Clear[tableofq2p2]
+
+Do[
+ tableofq2p2[k] =
+  Table[{First[q20[time[k, pp]] /. s[[k]]],
+    First[p20[time[k, pp]] /. s[[k]]]}, {pp, 1,
+    Length[tableofinitialtimes[k]]}], {k, 1,
+  Length[tableofinitialconditions]}]
+
+(* plotting p2 vs q2 *)
+
+Length[tableofinitialconditions];
+sectionnumber[1] =
+  ListPlot[tableofq2p2[1], PlotStyle -> {Red, PointSize -> Small}];
+sectionnumber[2] =
+  ListPlot[tableofq2p2[2], PlotStyle -> {Green, PointSize -> Small}];
+sectionnumber[3] =
+  ListPlot[tableofq2p2[3], PlotStyle -> {Blue, PointSize -> Small}];
+sectionnumber[4] =
+  ListPlot[tableofq2p2[4], PlotStyle -> {Cyan, PointSize -> Small}];
+sectionnumber[5] =
+  ListPlot[tableofq2p2[5], PlotStyle -> {Magenta, PointSize -> Small}];
+sectionnumber[6] =
+  ListPlot[tableofq2p2[6],
+   PlotStyle -> {Yellow, PointSize -> Small}];
+sectionnumber[7] =
+  ListPlot[tableofq2p2[7], PlotStyle -> {Brown, PointSize -> Small}];
+sectionnumber[8] =
+  ListPlot[tableofq2p2[8],
+   PlotStyle -> {Orange, PointSize -> Small}];
+sectionnumber[9] =
+  ListPlot[tableofq2p2[9], PlotStyle -> {Pink, PointSize -> Small}];
+sectionnumber[10] =
+  ListPlot[tableofq2p2[10], PlotStyle -> {Purple, PointSize -> Small}];
+sectionnumber[11] =
+  ListPlot[tableofq2p2[11], PlotStyle -> {Red, PointSize -> Small}];
+sectionnumber[12] =
+  ListPlot[tableofq2p2[12],
+   PlotStyle -> {Green, PointSize -> Small}];
+sectionnumber[13] =
+  ListPlot[tableofq2p2[13], PlotStyle -> {Blue, PointSize -> Small}];
+sectionnumber[14] =
+  ListPlot[tableofq2p2[14], PlotStyle -> {Cyan, PointSize -> Small}];
+sectionnumber[15] =
+  ListPlot[tableofq2p2[15],
+   PlotStyle -> {Magenta, PointSize -> Small}];
+sectionnumber[16] =
+  ListPlot[tableofq2p2[16], PlotStyle -> {Yellow, PointSize -> Small}];
+sectionnumber[17] =
+  ListPlot[tableofq2p2[17],
+   PlotStyle -> {Brown, PointSize -> Small}];
+sectionnumber[18] =
+  ListPlot[tableofq2p2[18], PlotStyle -> {Orange, PointSize -> Small}];
+sectionnumber[19] =
+  ListPlot[tableofq2p2[19], PlotStyle -> {Pink, PointSize -> Small}];
+sectionnumber[20] =
+  ListPlot[tableofq2p2[20], PlotStyle -> {Purple, PointSize -> Small}];
+sectionnumber[21] =
+  ListPlot[tableofq2p2[21], PlotStyle -> {Red, PointSize -> Small}];
+sectionnumber[22] =
+  ListPlot[tableofq2p2[22],
+   PlotStyle -> {Green, PointSize -> Small}];
+sectionnumber[23] =
+  ListPlot[tableofq2p2[23], PlotStyle -> {Blue, PointSize -> Small}];
+sectionnumber[24] =
+  ListPlot[tableofq2p2[24], PlotStyle -> {Cyan, PointSize -> Small}];
+sectionnumber[25] =
+  ListPlot[tableofq2p2[25],
+   PlotStyle -> {Magenta, PointSize -> Small}];
+sectionnumber[26] =
+  ListPlot[tableofq2p2[26], PlotStyle -> {Yellow, PointSize -> Small}];
+sectionnumber[27] =
+  ListPlot[tableofq2p2[27],
+   PlotStyle -> {Brown, PointSize -> Small}];
+sectionnumber[28] =
+  ListPlot[tableofq2p2[28], PlotStyle -> {Orange, PointSize -> Small}];
+sectionnumber[29] =
+  ListPlot[tableofq2p2[29], PlotStyle -> {Pink, PointSize -> Small}];
+sectionnumber[30] =
+  ListPlot[tableofq2p2[30], PlotStyle -> {Purple, PointSize -> Small}];
+sectionnumber[31] =
+  ListPlot[tableofq2p2[31], PlotStyle -> {Red, PointSize -> Small}];
+
+energy1over12 =
+ Show[Table[
+   sectionnumber[k], {k, 1, Length[tableofinitialconditions]}],
+  PlotRange -> All, AspectRatio -> 1, Background -> Transparent]
+Export["energy1over12.png", energy1over12, "PNG", ImageSize -> 1080]
+
+(* checking energy is conserved *)
+Print[energyofh]
+Clear[energyofh]
+(*Table[{First[p10[finaltime]/.s[[k]]],First[p20[finaltime]/.s[[k]]],\
+First[q10[finaltime]/.s[[k]]],First[q20[finaltime]/.s[[k]]]},{k,1,2}]*)
+\
+Do[{p1f, p2f, q1f, q2f} = {First[p10[finaltime] /. s[[k]]],
+   First[p20[finaltime] /. s[[k]]], First[q10[finaltime] /. s[[k]]],
+   First[q20[finaltime] /. s[[k]]]};
+ energyofh =
+  1/2 (p10^2 + p20^2) +
+    1/24 (Exp[2 q20 + 2 Sqrt[3] q10] + Exp[2 q20 - 2 (Sqrt[3]) q10] +
+       Exp[-4 q20]) - 1/8 /. {p10 -> p1f, p20 -> p2f, q10 -> q1f,
+    q20 -> q2f};
+ Print[energyofh],
+ {k, 1, Length[tableofinitialconditions]}]
+
+Print["Section 1.  End time is:", DateList[]]
+t1 = AbsoluteTime[];
+
+Print["This took ", t1 - t0, " seconds."]
+
+Pause[1200]
+
+(* -------------------------------------------------------------------------------------\
+---------------------  *)
+
+
+Print["Section 2.  Start time is:", DateList[]]
+t0 = AbsoluteTime[];
+
+Clear[p1, q1, p2, q2, p10, p20, q10, q20, H]
+(* finaltime= 100000; *)
+energyofh = 12/12.;
+
+
+H = 1/2 (p10^2 + p20^2) +
+    1/24 (Exp[2 q20 + 2 Sqrt[3] q10] + Exp[2 q20 - 2 (Sqrt[3]) q10] +
+       Exp[-4 q20]) - 1/8 /. {q10 -> q10[t], q20 -> q20[t],
+    p10 -> p10[t], p20 -> p20[t]};
+
+(* equations of motion *)
+
+Clear[p10]
+
+p1dot = p10'[t] == -D[H, q10[t]];
+p2dot = p20'[t] == -D[H, q20[t]] ;
+q1dot = q10'[t] == D[H, p10[t]] ;
+q2dot = q20'[t] == D[H, p20[t]] ;
+
+(* initial conditions *)
+
+initialconditionequation =
+  1/2 (p1^2 + p2^2) + (1/24) (E^(2 q2 + 2 (3^(1/2) q1)) +
+       E^(2 q2 - 2 (3)^(1/2) q1) + E^(-4 q2)) - (1/8) -
+    energyofh /. {q1 -> 0, p2 -> 0};
+possiblep1 = Solve[initialconditionequation == 0, p1];
+possiblep1[[2, 1, 2]];
+tableofinitialconditions =
+  Table[{possiblep1[[2, 1, 2]], 0, 0, q2}, {q2, 0, 1.3, 0.04}];
+(* Manually enter initial conditions {a,b,c,d}
+AppendTo[tableofinitialconditions,{a1,b1,c1,d1}]
+AppendTo[tableofinitialconditions,{a2,b2,c2,d2}]
+tableofinitialconditions[{a1,b1,c1,d1},{a2,b2,c2,d2}]
+*)
+tableofinitialconditions // MatrixForm;
+Length[tableofinitialconditions];
+Print["There are ",
+ Length[tableofinitialconditions], " initial conditions for this \
+energy."]
+
+(* initial conditions in equations of motion *)
+
+listoftableofICS =
+  Table[{p1dot, p2dot, q1dot, q2dot,
+    p10[0] == tableofinitialconditions[[k, 1]],
+    p20[0] == tableofinitialconditions[[k, 2]],
+    q10[0] == tableofinitialconditions[[k, 3]],
+    q20[0] == tableofinitialconditions[[k, 4]]}, {k, 1,
+    Length[tableofinitialconditions]}];
+listoftableofICS // MatrixForm;
+Length[listoftableofICS];
+
+(* solving differential equation for solutions to hamiltonian with \
+initial conditions *)
+
+
+
+s = Table[
+   NDSolve[listoftableofICS[[kk]], {p10, p20, q10, q20}, {t, 0,
+     finaltime},
+    Method -> {"SymplecticPartitionedRungeKutta",
+      DifferenceOrder -> 6, "PositionVariables" -> {q10[t], q20[t]}},
+    StartingStepSize -> 1/10], {kk, 1,
+    Length[tableofinitialconditions]}];
+
+(* calculating solutions of the differential equations with respect \
+to initial conditions *)
+
+
+Do[
+ tableofq1s[kk] =
+  ParallelTable[{t, First[q10[t] /. s[[kk]]]}, {t, 0, finaltime,
+    0.05}], {kk, 1, Length[tableofinitialconditions]}]
+
+(* table with q1 and q1*q1 *)
+
+
+Do[
+ tableofproductsofq1s[kk] =
+  ParallelTable[{tableofq1s[kk][[pp, 1]],
+    tableofq1s[kk][[pp, 2]] tableofq1s[kk][[pp + 1, 2]]}, {pp, 1,
+    Length[tableofq1s[kk]] - 1}], {kk, 1,
+  Length[tableofinitialconditions]}]
+
+(* sorting table with q1 and q1*q1 for values less than zero *)
+
+Do[tableofinitialtimes[kk] = {}, {kk, 1,
+  Length[tableofinitialconditions]}]
+Do[Do[If[tableofproductsofq1s[kk][[pp, 2]] < 0.,
+   AppendTo[tableofinitialtimes[kk],
+    tableofproductsofq1s[kk][[pp, 1]]]], {pp, 1,
+   Length[tableofproductsofq1s[kk]]}], {kk, 1,
+  Length[tableofinitialconditions]}]
+Length[tableofinitialtimes[k]];
+
+(* sorting for positive values from previous table, and sorting for \
+appropriate times *)
+
+Do[
+  Do[
+   tablek =
+    Table[{Abs[First[q10[tt] /. s[[k]]]], tt}, {tt,
+      tableofinitialtimes[k][[pp]],
+      tableofinitialtimes[k][[pp]] + 0.1, 0.005}];
+   time[k, pp] = Sort[tablek][[1, 2]], {pp, 1,
+    Length[tableofinitialtimes[k]]}], {k, 1,
+   Length[tableofinitialconditions]}];
+
+(* using appropriate times and initial conditions with solutions of \
+differential equations *)
+
+Clear[tableofq2p2]
+
+Do[
+ tableofq2p2[k] =
+  Table[{First[q20[time[k, pp]] /. s[[k]]],
+    First[p20[time[k, pp]] /. s[[k]]]}, {pp, 1,
+    Length[tableofinitialtimes[k]]}], {k, 1,
+  Length[tableofinitialconditions]}]
+
+(* plotting p2 vs q2 *)
+Clear[sectionnumber]
+
+Length[tableofinitialconditions];
+sectionnumber[1] =
+  ListPlot[tableofq2p2[1], PlotStyle -> {Red, PointSize -> Small}];
+sectionnumber[2] =
+  ListPlot[tableofq2p2[2], PlotStyle -> {Green, PointSize -> Small}];
+sectionnumber[3] =
+  ListPlot[tableofq2p2[3], PlotStyle -> {Blue, PointSize -> Small}];
+sectionnumber[4] =
+  ListPlot[tableofq2p2[4], PlotStyle -> {Cyan, PointSize -> Small}];
+sectionnumber[5] =
+  ListPlot[tableofq2p2[5], PlotStyle -> {Magenta, PointSize -> Small}];
+sectionnumber[6] =
+  ListPlot[tableofq2p2[6],
+   PlotStyle -> {Yellow, PointSize -> Small}];
+sectionnumber[7] =
+  ListPlot[tableofq2p2[7], PlotStyle -> {Brown, PointSize -> Small}];
+sectionnumber[8] =
+  ListPlot[tableofq2p2[8],
+   PlotStyle -> {Orange, PointSize -> Small}];
+sectionnumber[9] =
+  ListPlot[tableofq2p2[9], PlotStyle -> {Pink, PointSize -> Small}];
+sectionnumber[10] =
+  ListPlot[tableofq2p2[10], PlotStyle -> {Purple, PointSize -> Small}];
+sectionnumber[11] =
+  ListPlot[tableofq2p2[11], PlotStyle -> {Red, PointSize -> Small}];
+sectionnumber[12] =
+  ListPlot[tableofq2p2[12],
+   PlotStyle -> {Green, PointSize -> Small}];
+sectionnumber[13] =
+  ListPlot[tableofq2p2[13], PlotStyle -> {Blue, PointSize -> Small}];
+sectionnumber[14] =
+  ListPlot[tableofq2p2[14], PlotStyle -> {Cyan, PointSize -> Small}];
+sectionnumber[15] =
+  ListPlot[tableofq2p2[15],
+   PlotStyle -> {Magenta, PointSize -> Small}];
+sectionnumber[16] =
+  ListPlot[tableofq2p2[16], PlotStyle -> {Yellow, PointSize -> Small}];
+sectionnumber[17] =
+  ListPlot[tableofq2p2[17],
+   PlotStyle -> {Brown, PointSize -> Small}];
+sectionnumber[18] =
+  ListPlot[tableofq2p2[18], PlotStyle -> {Orange, PointSize -> Small}];
+sectionnumber[19] =
+  ListPlot[tableofq2p2[19], PlotStyle -> {Pink, PointSize -> Small}];
+sectionnumber[20] =
+  ListPlot[tableofq2p2[20], PlotStyle -> {Purple, PointSize -> Small}];
+sectionnumber[21] =
+  ListPlot[tableofq2p2[21], PlotStyle -> {Red, PointSize -> Small}];
+sectionnumber[22] =
+  ListPlot[tableofq2p2[22],
+   PlotStyle -> {Green, PointSize -> Small}];
+sectionnumber[23] =
+  ListPlot[tableofq2p2[23], PlotStyle -> {Blue, PointSize -> Small}];
+sectionnumber[24] =
+  ListPlot[tableofq2p2[24], PlotStyle -> {Cyan, PointSize -> Small}];
+sectionnumber[25] =
+  ListPlot[tableofq2p2[25],
+   PlotStyle -> {Magenta, PointSize -> Small}];
+sectionnumber[26] =
+  ListPlot[tableofq2p2[26], PlotStyle -> {Yellow, PointSize -> Small}];
+sectionnumber[27] =
+  ListPlot[tableofq2p2[27],
+   PlotStyle -> {Brown, PointSize -> Small}];
+sectionnumber[28] =
+  ListPlot[tableofq2p2[28], PlotStyle -> {Orange, PointSize -> Small}];
+sectionnumber[29] =
+  ListPlot[tableofq2p2[29], PlotStyle -> {Pink, PointSize -> Small}];
+sectionnumber[30] =
+  ListPlot[tableofq2p2[30], PlotStyle -> {Purple, PointSize -> Small}];
+sectionnumber[31] =
+  ListPlot[tableofq2p2[31], PlotStyle -> {Red, PointSize -> Small}];
+
+energy1 =
+ Show[Table[
+   sectionnumber[k], {k, 1, Length[tableofinitialconditions] - 2}],
+  PlotRange -> All, AspectRatio -> 1, Background -> Transparent]
+Export["energy1.png", energy1, "PNG", ImageSize -> 1080]
+
+(* checking energy is conserved *)
+Print[energyofh]
+Clear[energyofh]
+(*Table[{First[p10[finaltime]/.s[[k]]],First[p20[finaltime]/.s[[k]]],\
+First[q10[finaltime]/.s[[k]]],First[q20[finaltime]/.s[[k]]]},{k,1,2}]*)
+\
+Do[{p1f, p2f, q1f, q2f} = {First[p10[finaltime] /. s[[k]]],
+   First[p20[finaltime] /. s[[k]]], First[q10[finaltime] /. s[[k]]],
+   First[q20[finaltime] /. s[[k]]]};
+ energyofh =
+  1/2 (p10^2 + p20^2) +
+    1/24 (Exp[2 q20 + 2 Sqrt[3] q10] + Exp[2 q20 - 2 (Sqrt[3]) q10] +
+       Exp[-4 q20]) - 1/8 /. {p10 -> p1f, p20 -> p2f, q10 -> q1f,
+    q20 -> q2f};
+ Print[energyofh],
+ {k, 1, Length[tableofinitialconditions]}]
+
+Print["Section 2.  End time is:", DateList[]]
+t1 = AbsoluteTime[];
+
+Print["This took ", t1 - t0, " seconds."]
+
+Pause[1200]
+
+(* -------------------------------------------------------------------------------------\
+---------------------  *)
+
+
+Print["Section 3.  Start time is:", DateList[]]
+t0 = AbsoluteTime[];
+
+Clear[p1, q1, p2, q2, p10, p20, q10, q20, H]
+(* finaltime= 100000; *)
+energyofh = 60/12.;
+
+
+H = 1/2 (p10^2 + p20^2) +
+    1/24 (Exp[2 q20 + 2 Sqrt[3] q10] + Exp[2 q20 - 2 (Sqrt[3]) q10] +
+       Exp[-4 q20]) - 1/8 /. {q10 -> q10[t], q20 -> q20[t],
+    p10 -> p10[t], p20 -> p20[t]};
+
+(* equations of motion *)
+
+Clear[p10]
+
+p1dot = p10'[t] == -D[H, q10[t]];
+p2dot = p20'[t] == -D[H, q20[t]] ;
+q1dot = q10'[t] == D[H, p10[t]] ;
+q2dot = q20'[t] == D[H, p20[t]] ;
+
+(* initial conditions *)
+
+initialconditionequation =
+  1/2 (p1^2 + p2^2) + (1/24) (E^(2 q2 + 2 (3^(1/2) q1)) +
+       E^(2 q2 - 2 (3)^(1/2) q1) + E^(-4 q2)) - (1/8) -
+    energyofh /. {q1 -> 0, p2 -> 0};
+possiblep1 = Solve[initialconditionequation == 0, p1];
+possiblep1[[2, 1, 2]];
+tableofinitialconditions =
+  Table[{possiblep1[[2, 1, 2]], 0, 0, q2}, {q2, 0, 2.04, 0.068}];
+(* Manually enter initial conditions {a,b,c,d}
+AppendTo[tableofinitialconditions,{a1,b1,c1,d1}]
+AppendTo[tableofinitialconditions,{a2,b2,c2,d2}]
+tableofinitialconditions[{a1,b1,c1,d1},{a2,b2,c2,d2}]
+*)
+tableofinitialconditions // MatrixForm;
+Print["There are ",
+ Length[tableofinitialconditions], " initial conditions for this \
+energy."]
+
+(* initial conditions in equations of motion *)
+
+listoftableofICS =
+  Table[{p1dot, p2dot, q1dot, q2dot,
+    p10[0] == tableofinitialconditions[[k, 1]],
+    p20[0] == tableofinitialconditions[[k, 2]],
+    q10[0] == tableofinitialconditions[[k, 3]],
+    q20[0] == tableofinitialconditions[[k, 4]]}, {k, 1,
+    Length[tableofinitialconditions]}];
+listoftableofICS // MatrixForm;
+Length[listoftableofICS];
+
+(* solving differential equation for solutions to hamiltonian with \
+initial conditions *)
+
+
+
+s = Table[
+   NDSolve[listoftableofICS[[kk]], {p10, p20, q10, q20}, {t, 0,
+     finaltime},
+    Method -> {"SymplecticPartitionedRungeKutta",
+      DifferenceOrder -> 8, "PositionVariables" -> {q10[t], q20[t]}},
+    StartingStepSize -> 1/10], {kk, 1,
+    Length[tableofinitialconditions]}];
+
+(* calculating solutions of the differential equations with respect \
+to initial conditions *)
+
+
+Do[
+ tableofq1s[kk] =
+  ParallelTable[{t, First[q10[t] /. s[[kk]]]}, {t, 0, finaltime,
+    0.05}], {kk, 1, Length[tableofinitialconditions]}]
+
+(* table with q1 and q1*q1 *)
+
+
+Do[
+ tableofproductsofq1s[kk] =
+  ParallelTable[{tableofq1s[kk][[pp, 1]],
+    tableofq1s[kk][[pp, 2]] tableofq1s[kk][[pp + 1, 2]]}, {pp, 1,
+    Length[tableofq1s[kk]] - 1}], {kk, 1,
+  Length[tableofinitialconditions]}]
+
+(* sorting table with q1 and q1*q1 for values less than zero *)
+
+Do[tableofinitialtimes[kk] = {}, {kk, 1,
+  Length[tableofinitialconditions]}]
+Do[Do[If[tableofproductsofq1s[kk][[pp, 2]] < 0.,
+   AppendTo[tableofinitialtimes[kk],
+    tableofproductsofq1s[kk][[pp, 1]]]], {pp, 1,
+   Length[tableofproductsofq1s[kk]]}], {kk, 1,
+  Length[tableofinitialconditions]}]
+Length[tableofinitialtimes[k]];
+
+(* sorting for positive values from previous table, and sorting for \
+appropriate times *)
+
+Do[
+  Do[
+   tablek =
+    Table[{Abs[First[q10[tt] /. s[[k]]]], tt}, {tt,
+      tableofinitialtimes[k][[pp]],
+      tableofinitialtimes[k][[pp]] + 0.1, 0.005}];
+   time[k, pp] = Sort[tablek][[1, 2]], {pp, 1,
+    Length[tableofinitialtimes[k]]}], {k, 1,
+   Length[tableofinitialconditions]}];
+
+(* using appropriate times and initial conditions with solutions of \
+differential equations *)
+
+Clear[tableofq2p2]
+
+Do[
+ tableofq2p2[k] =
+  Table[{First[q20[time[k, pp]] /. s[[k]]],
+    First[p20[time[k, pp]] /. s[[k]]]}, {pp, 1,
+    Length[tableofinitialtimes[k]]}], {k, 1,
+  Length[tableofinitialconditions]}]
+
+(* plotting p2 vs q2 *)
+
+Length[tableofinitialconditions];
+sectionnumber[1] =
+  ListPlot[tableofq2p2[1], PlotStyle -> {Red, PointSize -> Small}];
+sectionnumber[2] =
+  ListPlot[tableofq2p2[2], PlotStyle -> {Green, PointSize -> Small}];
+sectionnumber[3] =
+  ListPlot[tableofq2p2[3], PlotStyle -> {Blue, PointSize -> Small}];
+sectionnumber[4] =
+  ListPlot[tableofq2p2[4], PlotStyle -> {Cyan, PointSize -> Small}];
+sectionnumber[5] =
+  ListPlot[tableofq2p2[5], PlotStyle -> {Magenta, PointSize -> Small}];
+sectionnumber[6] =
+  ListPlot[tableofq2p2[6],
+   PlotStyle -> {Yellow, PointSize -> Small}];
+sectionnumber[7] =
+  ListPlot[tableofq2p2[7], PlotStyle -> {Brown, PointSize -> Small}];
+sectionnumber[8] =
+  ListPlot[tableofq2p2[8],
+   PlotStyle -> {Orange, PointSize -> Small}];
+sectionnumber[9] =
+  ListPlot[tableofq2p2[9], PlotStyle -> {Pink, PointSize -> Small}];
+sectionnumber[10] =
+  ListPlot[tableofq2p2[10], PlotStyle -> {Purple, PointSize -> Small}];
+sectionnumber[11] =
+  ListPlot[tableofq2p2[11], PlotStyle -> {Red, PointSize -> Small}];
+sectionnumber[12] =
+  ListPlot[tableofq2p2[12],
+   PlotStyle -> {Green, PointSize -> Small}];
+sectionnumber[13] =
+  ListPlot[tableofq2p2[13], PlotStyle -> {Blue, PointSize -> Small}];
+sectionnumber[14] =
+  ListPlot[tableofq2p2[14], PlotStyle -> {Cyan, PointSize -> Small}];
+sectionnumber[15] =
+  ListPlot[tableofq2p2[15],
+   PlotStyle -> {Magenta, PointSize -> Small}];
+sectionnumber[16] =
+  ListPlot[tableofq2p2[16], PlotStyle -> {Yellow, PointSize -> Small}];
+sectionnumber[17] =
+  ListPlot[tableofq2p2[17],
+   PlotStyle -> {Brown, PointSize -> Small}];
+sectionnumber[18] =
+  ListPlot[tableofq2p2[18], PlotStyle -> {Orange, PointSize -> Small}];
+sectionnumber[19] =
+  ListPlot[tableofq2p2[19], PlotStyle -> {Pink, PointSize -> Small}];
+sectionnumber[20] =
+  ListPlot[tableofq2p2[20], PlotStyle -> {Purple, PointSize -> Small}];
+sectionnumber[21] =
+  ListPlot[tableofq2p2[21], PlotStyle -> {Red, PointSize -> Small}];
+sectionnumber[22] =
+  ListPlot[tableofq2p2[22],
+   PlotStyle -> {Green, PointSize -> Small}];
+sectionnumber[23] =
+  ListPlot[tableofq2p2[23], PlotStyle -> {Blue, PointSize -> Small}];
+sectionnumber[24] =
+  ListPlot[tableofq2p2[24], PlotStyle -> {Cyan, PointSize -> Small}];
+sectionnumber[25] =
+  ListPlot[tableofq2p2[25],
+   PlotStyle -> {Magenta, PointSize -> Small}];
+sectionnumber[26] =
+  ListPlot[tableofq2p2[26], PlotStyle -> {Yellow, PointSize -> Small}];
+sectionnumber[27] =
+  ListPlot[tableofq2p2[27],
+   PlotStyle -> {Brown, PointSize -> Small}];
+sectionnumber[28] =
+  ListPlot[tableofq2p2[28], PlotStyle -> {Orange, PointSize -> Small}];
+sectionnumber[29] =
+  ListPlot[tableofq2p2[29], PlotStyle -> {Pink, PointSize -> Small}];
+sectionnumber[30] =
+  ListPlot[tableofq2p2[30], PlotStyle -> {Purple, PointSize -> Small}];
+sectionnumber[31] =
+  ListPlot[tableofq2p2[31], PlotStyle -> {Red, PointSize -> Small}];
+Clear[energy5]
+energy5 =
+ Show[Table[
+   sectionnumber[k], {k, 1, Length[tableofinitialconditions]}],
+  PlotRange -> All, AspectRatio -> 1, Background -> Transparent]
+Export["energy5.png", energy5, "PNG", ImageSize -> 1080]
+
+(* checking energy is conserved *)
+Print[energyofh]
+Clear[energyofh]
+(*Table[{First[p10[finaltime]/.s[[k]]],First[p20[finaltime]/.s[[k]]],\
+First[q10[finaltime]/.s[[k]]],First[q20[finaltime]/.s[[k]]]},{k,1,2}]*)
+\
+Do[{p1f, p2f, q1f, q2f} = {First[p10[finaltime] /. s[[k]]],
+   First[p20[finaltime] /. s[[k]]], First[q10[finaltime] /. s[[k]]],
+   First[q20[finaltime] /. s[[k]]]};
+ energyofh =
+  1/2 (p10^2 + p20^2) +
+    1/24 (Exp[2 q20 + 2 Sqrt[3] q10] + Exp[2 q20 - 2 (Sqrt[3]) q10] +
+       Exp[-4 q20]) - 1/8 /. {p10 -> p1f, p20 -> p2f, q10 -> q1f,
+    q20 -> q2f};
+ Print[energyofh],
+ {k, 1, Length[tableofinitialconditions]}]
+
+Print["Section 3.  End time is:", DateList[]]
+t1 = AbsoluteTime[];
+
+Print["This took ", t1 - t0, " seconds."]
